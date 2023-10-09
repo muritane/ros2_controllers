@@ -196,6 +196,7 @@ controller_interface::return_type JointTrajectoryController::update(
       first_sample = true;
       if (params_.open_loop_control)
       {
+        // traj_external_point_ptr_->set_point_before_trajectory_msg(time, last_commanded_state_);
         if (last_commanded_time_.seconds() == 0.0)
         {
           last_commanded_time_ = time;

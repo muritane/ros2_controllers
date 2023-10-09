@@ -216,564 +216,564 @@ public:
   static void TearDownTestCase() { TrajectoryControllerTest::TearDownTestCase(); }
 };
 
-TEST_P(TestTrajectoryActionsTestParameterized, test_success_single_point_sendgoal)
-{
-  SetUpExecutor();
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal
-  std::vector<double> point_positions{1.0, 2.0, 3.0};
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(0.5);
-    point.positions.resize(joint_names_.size());
-
-    point.positions = point_positions;
-
-    points.push_back(point);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the last position goal
-  // i.e., active but trivial trajectory (one point only)
-  // note: the action goal also is a trivial trajectory
-  if (traj_controller_->has_position_command_interface())
-  {
-    expectHoldingPoint(point_positions);
-  }
-  else
-  {
-    // no integration to position state interface from velocity/acceleration
-    expectHoldingPoint(INITIAL_POS_JOINTS);
-  }
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_success_multi_point_sendgoal)
-{
-  SetUpExecutor();
-  SetUpControllerHardware();
-
-  // add feedback
-  bool feedback_recv = false;
-  goal_options_.feedback_callback =
-    [&](
-      rclcpp_action::ClientGoalHandle<FollowJointTrajectoryMsg>::SharedPtr,
-      const std::shared_ptr<const FollowJointTrajectoryMsg::Feedback>) { feedback_recv = true; };
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal with multiple points
-  std::vector<std::vector<double>> points_positions{{{4.0, 5.0, 6.0}}, {{7.0, 8.0, 9.0}}};
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point1;
-    point1.time_from_start = rclcpp::Duration::from_seconds(0.2);
-    point1.positions.resize(joint_names_.size());
-
-    point1.positions = points_positions.at(0);
-    points.push_back(point1);
-
-    JointTrajectoryPoint point2;
-    point2.time_from_start = rclcpp::Duration::from_seconds(0.3);
-    point2.positions.resize(joint_names_.size());
-
-    point2.positions = points_positions.at(1);
-    points.push_back(point2);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(feedback_recv);
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the last position goal
-  // i.e., active but trivial trajectory (one point only)
-  if (traj_controller_->has_position_command_interface())
-  {
-    expectHoldingPoint(points_positions.at(1));
-  }
-  else
-  {
-    // no integration to position state interface from velocity/acceleration
-    expectHoldingPoint(INITIAL_POS_JOINTS);
-  }
-}
-
-/**
- * Makes sense with position command interface only,
- * because no integration to position state interface is implemented
- */
-TEST_F(TestTrajectoryActions, test_goal_tolerances_single_point_success)
-{
-  // set tolerance parameters
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("constraints.joint1.goal", 0.1),
-    rclcpp::Parameter("constraints.joint2.goal", 0.1),
-    rclcpp::Parameter("constraints.joint3.goal", 0.1)};
-
-  SetUpExecutor(params);
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal
-  std::vector<std::vector<double>> points_positions{{{1.0, 2.0, 3.0}}};
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(0.5);
-    point.positions.resize(joint_names_.size());
-
-    point.positions = points_positions.at(0);
-    points.push_back(point);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
-  EXPECT_EQ(
-    control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the last position goal
-  // i.e., active but trivial trajectory (one point only)
-  expectHoldingPoint(points_positions.at(0));
-}
-
-/**
- * Makes sense with position command interface only,
- * because no integration to position state interface is implemented
- */
-TEST_F(TestTrajectoryActions, test_goal_tolerances_multi_point_success)
-{
-  // set tolerance parameters
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("constraints.joint1.goal", 0.1),
-    rclcpp::Parameter("constraints.joint2.goal", 0.1),
-    rclcpp::Parameter("constraints.joint3.goal", 0.1)};
-
-  SetUpExecutor(params);
-  SetUpControllerHardware();
-
-  // add feedback
-  bool feedback_recv = false;
-  goal_options_.feedback_callback =
-    [&](
-      rclcpp_action::ClientGoalHandle<FollowJointTrajectoryMsg>::SharedPtr,
-      const std::shared_ptr<const FollowJointTrajectoryMsg::Feedback>) { feedback_recv = true; };
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal with multiple points
-  std::vector<std::vector<double>> points_positions{{{4.0, 5.0, 6.0}}, {{7.0, 8.0, 9.0}}};
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point1;
-    point1.time_from_start = rclcpp::Duration::from_seconds(0.2);
-    point1.positions.resize(joint_names_.size());
-
-    point1.positions = points_positions.at(0);
-    points.push_back(point1);
-
-    JointTrajectoryPoint point2;
-    point2.time_from_start = rclcpp::Duration::from_seconds(0.3);
-    point2.positions.resize(joint_names_.size());
-
-    point2.positions = points_positions.at(1);
-    points.push_back(point2);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(feedback_recv);
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
-  EXPECT_EQ(
-    control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the last position goal
-  // i.e., active but trivial trajectory (one point only)
-  expectHoldingPoint(points_positions.at(1));
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_state_tolerances_fail)
-{
-  // set joint tolerance parameters
-  const double state_tol = 0.0001;
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("constraints.joint1.trajectory", state_tol),
-    rclcpp::Parameter("constraints.joint2.trajectory", state_tol),
-    rclcpp::Parameter("constraints.joint3.trajectory", state_tol)};
-
-  // separate command from states -> immediate state tolerance fail
-  bool separate_cmd_and_state_values = true;
-  SetUpExecutor(params, separate_cmd_and_state_values);
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal
-  std::vector<std::vector<double>> points_positions{{{4.0, 5.0, 6.0}}, {{7.0, 8.0, 9.0}}};
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point1;
-    point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point1.positions.resize(joint_names_.size());
-
-    point1.positions = points_positions.at(0);
-    points.push_back(point1);
-
-    JointTrajectoryPoint point2;
-    point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
-    point2.positions.resize(joint_names_.size());
-
-    point2.positions = points_positions.at(1);
-    points.push_back(point2);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::ABORTED, common_resultcode_);
-  EXPECT_EQ(
-    control_msgs::action::FollowJointTrajectory_Result::PATH_TOLERANCE_VIOLATED,
-    common_action_result_code_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the position (being the initial one)
-  // i.e., active but trivial trajectory (one point only)
-  std::vector<double> initial_positions{INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
-  expectHoldingPoint(initial_positions);
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_goal_tolerances_fail)
-{
-  // set joint tolerance parameters
-  const double goal_tol = 0.1;
-  // set very small goal_time so that goal_time is violated
-  const double goal_time = 0.000001;
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("constraints.joint1.goal", goal_tol),
-    rclcpp::Parameter("constraints.joint2.goal", goal_tol),
-    rclcpp::Parameter("constraints.joint3.goal", goal_tol),
-    rclcpp::Parameter("constraints.goal_time", goal_time)};
-
-  // separate command from states -> goal won't never be reached
-  bool separate_cmd_and_state_values = true;
-  SetUpExecutor(params, separate_cmd_and_state_values);
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal; one point only -> command is directly set to reach this goal (no interpolation)
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point.positions.resize(joint_names_.size());
-
-    point.positions[0] = 4.0;
-    point.positions[1] = 5.0;
-    point.positions[2] = 6.0;
-    points.push_back(point);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::ABORTED, common_resultcode_);
-  EXPECT_EQ(
-    control_msgs::action::FollowJointTrajectory_Result::GOAL_TOLERANCE_VIOLATED,
-    common_action_result_code_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the position (being the initial one)
-  // i.e., active but trivial trajectory (one point only)
-  std::vector<double> initial_positions{INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
-  expectHoldingPoint(initial_positions);
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_no_time_from_start_state_tolerance_fail)
-{
-  // set joint tolerance parameters
-  const double state_tol = 0.0001;
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("constraints.joint1.trajectory", state_tol),
-    rclcpp::Parameter("constraints.joint2.trajectory", state_tol),
-    rclcpp::Parameter("constraints.joint3.trajectory", state_tol)};
-
-  // separate command from states -> goal won't never be reached
-  bool separate_cmd_and_state_values = true;
-  SetUpExecutor(params, separate_cmd_and_state_values);
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point.positions.resize(joint_names_.size());
-
-    point.positions[0] = 4.0;
-    point.positions[1] = 5.0;
-    point.positions[2] = 6.0;
-    points.push_back(point);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::ABORTED, common_resultcode_);
-  EXPECT_EQ(
-    control_msgs::action::FollowJointTrajectory_Result::PATH_TOLERANCE_VIOLATED,
-    common_action_result_code_);
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the position (being the initial one)
-  // i.e., active but trivial trajectory (one point only)
-  std::vector<double> initial_positions{INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
-  expectHoldingPoint(initial_positions);
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_cancel_hold_position)
-{
-  SetUpExecutor();
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(1.0);
-    point.positions.resize(joint_names_.size());
-
-    point.positions[0] = 4.0;
-    point.positions[1] = 5.0;
-    point.positions[2] = 6.0;
-    points.push_back(point);
-
-    control_msgs::action::FollowJointTrajectory_Goal goal_msg;
-    goal_msg.goal_time_tolerance = rclcpp::Duration::from_seconds(2.0);
-    goal_msg.trajectory.joint_names = joint_names_;
-    goal_msg.trajectory.points = points;
-
-    // send and wait for half a second before cancel
-    gh_future = action_client_->async_send_goal(goal_msg, goal_options_);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-    const auto goal_handle = gh_future.get();
-    action_client_->async_cancel_goal(goal_handle);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::CANCELED, common_resultcode_);
-  EXPECT_EQ(
-    control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
-
-  std::vector<double> cancelled_position{joint_pos_[0], joint_pos_[1], joint_pos_[2]};
-
-  // run an update
-  updateController(rclcpp::Duration::from_seconds(0.01));
-
-  // it should be holding the last position,
-  // i.e., active but trivial trajectory (one point only)
-  expectHoldingPoint(cancelled_position);
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_allow_nonzero_velocity_at_trajectory_end_true)
-{
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("allow_nonzero_velocity_at_trajectory_end", true)};
-  SetUpExecutor(params);
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal with nonzero last velocities
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point1;
-    point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point1.positions.resize(joint_names_.size());
-    point1.velocities.resize(joint_names_.size());
-
-    point1.positions[0] = 4.0;
-    point1.positions[1] = 5.0;
-    point1.positions[2] = 6.0;
-    point1.velocities[0] = 4.0;
-    point1.velocities[1] = 5.0;
-    point1.velocities[2] = 6.0;
-    points.push_back(point1);
-
-    JointTrajectoryPoint point2;
-    point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
-    point2.positions.resize(joint_names_.size());
-    point2.velocities.resize(joint_names_.size());
-
-    point2.positions[0] = 7.0;
-    point2.positions[1] = 8.0;
-    point2.positions[2] = 9.0;
-    point2.velocities[0] = 4.0;
-    point2.velocities[1] = 5.0;
-    point2.velocities[2] = 6.0;
-    points.push_back(point2);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  // will be accepted despite nonzero last point
-  EXPECT_TRUE(gh_future.get());
-  EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
-}
-
-TEST_P(TestTrajectoryActionsTestParameterized, test_allow_nonzero_velocity_at_trajectory_end_false)
-{
-  std::vector<rclcpp::Parameter> params = {
-    rclcpp::Parameter("allow_nonzero_velocity_at_trajectory_end", false)};
-  SetUpExecutor(params);
-  SetUpControllerHardware();
-
-  std::shared_future<typename GoalHandle::SharedPtr> gh_future;
-  // send goal with nonzero last velocities
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point1;
-    point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point1.positions.resize(joint_names_.size());
-    point1.velocities.resize(joint_names_.size());
-
-    point1.positions[0] = 4.0;
-    point1.positions[1] = 5.0;
-    point1.positions[2] = 6.0;
-    point1.velocities[0] = 4.0;
-    point1.velocities[1] = 5.0;
-    point1.velocities[2] = 6.0;
-    points.push_back(point1);
-
-    JointTrajectoryPoint point2;
-    point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
-    point2.positions.resize(joint_names_.size());
-    point2.velocities.resize(joint_names_.size());
-
-    point2.positions[0] = 7.0;
-    point2.positions[1] = 8.0;
-    point2.positions[2] = 9.0;
-    point2.velocities[0] = 4.0;
-    point2.velocities[1] = 5.0;
-    point2.velocities[2] = 6.0;
-    points.push_back(point2);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-  controller_hw_thread_.join();
-
-  EXPECT_FALSE(gh_future.get());
-
-  // send goal with last velocity being zero
-  {
-    std::vector<JointTrajectoryPoint> points;
-    JointTrajectoryPoint point1;
-    point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point1.positions.resize(joint_names_.size());
-    point1.velocities.resize(joint_names_.size());
-
-    point1.positions[0] = 4.0;
-    point1.positions[1] = 5.0;
-    point1.positions[2] = 6.0;
-    point1.velocities[0] = 4.0;
-    point1.velocities[1] = 5.0;
-    point1.velocities[2] = 6.0;
-    points.push_back(point1);
-
-    JointTrajectoryPoint point2;
-    point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
-    point2.positions.resize(joint_names_.size());
-    point2.velocities.resize(joint_names_.size());
-
-    point2.positions[0] = 7.0;
-    point2.positions[1] = 8.0;
-    point2.positions[2] = 9.0;
-    point2.velocities[0] = 0.0;
-    point2.velocities[1] = 0.0;
-    point2.velocities[2] = 0.0;
-    points.push_back(point2);
-
-    gh_future = sendActionGoal(points, 1.0, goal_options_);
-  }
-
-  EXPECT_TRUE(gh_future.get());
-}
+// TEST_P(TestTrajectoryActionsTestParameterized, test_success_single_point_sendgoal)
+// {
+//   SetUpExecutor();
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal
+//   std::vector<double> point_positions{1.0, 2.0, 3.0};
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point;
+//     point.time_from_start = rclcpp::Duration::from_seconds(0.5);
+//     point.positions.resize(joint_names_.size());
+
+//     point.positions = point_positions;
+
+//     points.push_back(point);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the last position goal
+//   // i.e., active but trivial trajectory (one point only)
+//   // note: the action goal also is a trivial trajectory
+//   if (traj_controller_->has_position_command_interface())
+//   {
+//     expectHoldingPoint(point_positions);
+//   }
+//   else
+//   {
+//     // no integration to position state interface from velocity/acceleration
+//     expectHoldingPoint(INITIAL_POS_JOINTS);
+//   }
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_success_multi_point_sendgoal)
+// {
+//   SetUpExecutor();
+//   SetUpControllerHardware();
+
+//   // add feedback
+//   bool feedback_recv = false;
+//   goal_options_.feedback_callback =
+//     [&](
+//       rclcpp_action::ClientGoalHandle<FollowJointTrajectoryMsg>::SharedPtr,
+//       const std::shared_ptr<const FollowJointTrajectoryMsg::Feedback>) { feedback_recv = true; };
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal with multiple points
+//   std::vector<std::vector<double>> points_positions{{{4.0, 5.0, 6.0}}, {{7.0, 8.0, 9.0}}};
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point1;
+//     point1.time_from_start = rclcpp::Duration::from_seconds(0.2);
+//     point1.positions.resize(joint_names_.size());
+
+//     point1.positions = points_positions.at(0);
+//     points.push_back(point1);
+
+//     JointTrajectoryPoint point2;
+//     point2.time_from_start = rclcpp::Duration::from_seconds(0.3);
+//     point2.positions.resize(joint_names_.size());
+
+//     point2.positions = points_positions.at(1);
+//     points.push_back(point2);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(feedback_recv);
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the last position goal
+//   // i.e., active but trivial trajectory (one point only)
+//   if (traj_controller_->has_position_command_interface())
+//   {
+//     expectHoldingPoint(points_positions.at(1));
+//   }
+//   else
+//   {
+//     // no integration to position state interface from velocity/acceleration
+//     expectHoldingPoint(INITIAL_POS_JOINTS);
+//   }
+// }
+
+// /**
+//  * Makes sense with position command interface only,
+//  * because no integration to position state interface is implemented
+//  */
+// TEST_F(TestTrajectoryActions, test_goal_tolerances_single_point_success)
+// {
+//   // set tolerance parameters
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("constraints.joint1.goal", 0.1),
+//     rclcpp::Parameter("constraints.joint2.goal", 0.1),
+//     rclcpp::Parameter("constraints.joint3.goal", 0.1)};
+
+//   SetUpExecutor(params);
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal
+//   std::vector<std::vector<double>> points_positions{{{1.0, 2.0, 3.0}}};
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point;
+//     point.time_from_start = rclcpp::Duration::from_seconds(0.5);
+//     point.positions.resize(joint_names_.size());
+
+//     point.positions = points_positions.at(0);
+//     points.push_back(point);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
+//   EXPECT_EQ(
+//     control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the last position goal
+//   // i.e., active but trivial trajectory (one point only)
+//   expectHoldingPoint(points_positions.at(0));
+// }
+
+// /**
+//  * Makes sense with position command interface only,
+//  * because no integration to position state interface is implemented
+//  */
+// TEST_F(TestTrajectoryActions, test_goal_tolerances_multi_point_success)
+// {
+//   // set tolerance parameters
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("constraints.joint1.goal", 0.1),
+//     rclcpp::Parameter("constraints.joint2.goal", 0.1),
+//     rclcpp::Parameter("constraints.joint3.goal", 0.1)};
+
+//   SetUpExecutor(params);
+//   SetUpControllerHardware();
+
+//   // add feedback
+//   bool feedback_recv = false;
+//   goal_options_.feedback_callback =
+//     [&](
+//       rclcpp_action::ClientGoalHandle<FollowJointTrajectoryMsg>::SharedPtr,
+//       const std::shared_ptr<const FollowJointTrajectoryMsg::Feedback>) { feedback_recv = true; };
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal with multiple points
+//   std::vector<std::vector<double>> points_positions{{{4.0, 5.0, 6.0}}, {{7.0, 8.0, 9.0}}};
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point1;
+//     point1.time_from_start = rclcpp::Duration::from_seconds(0.2);
+//     point1.positions.resize(joint_names_.size());
+
+//     point1.positions = points_positions.at(0);
+//     points.push_back(point1);
+
+//     JointTrajectoryPoint point2;
+//     point2.time_from_start = rclcpp::Duration::from_seconds(0.3);
+//     point2.positions.resize(joint_names_.size());
+
+//     point2.positions = points_positions.at(1);
+//     points.push_back(point2);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(feedback_recv);
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
+//   EXPECT_EQ(
+//     control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the last position goal
+//   // i.e., active but trivial trajectory (one point only)
+//   expectHoldingPoint(points_positions.at(1));
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_state_tolerances_fail)
+// {
+//   // set joint tolerance parameters
+//   const double state_tol = 0.0001;
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("constraints.joint1.trajectory", state_tol),
+//     rclcpp::Parameter("constraints.joint2.trajectory", state_tol),
+//     rclcpp::Parameter("constraints.joint3.trajectory", state_tol)};
+
+//   // separate command from states -> immediate state tolerance fail
+//   bool separate_cmd_and_state_values = true;
+//   SetUpExecutor(params, separate_cmd_and_state_values);
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal
+//   std::vector<std::vector<double>> points_positions{{{4.0, 5.0, 6.0}}, {{7.0, 8.0, 9.0}}};
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point1;
+//     point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
+//     point1.positions.resize(joint_names_.size());
+
+//     point1.positions = points_positions.at(0);
+//     points.push_back(point1);
+
+//     JointTrajectoryPoint point2;
+//     point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
+//     point2.positions.resize(joint_names_.size());
+
+//     point2.positions = points_positions.at(1);
+//     points.push_back(point2);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::ABORTED, common_resultcode_);
+//   EXPECT_EQ(
+//     control_msgs::action::FollowJointTrajectory_Result::PATH_TOLERANCE_VIOLATED,
+//     common_action_result_code_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the position (being the initial one)
+//   // i.e., active but trivial trajectory (one point only)
+//   std::vector<double> initial_positions{INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
+//   expectHoldingPoint(initial_positions);
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_goal_tolerances_fail)
+// {
+//   // set joint tolerance parameters
+//   const double goal_tol = 0.1;
+//   // set very small goal_time so that goal_time is violated
+//   const double goal_time = 0.000001;
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("constraints.joint1.goal", goal_tol),
+//     rclcpp::Parameter("constraints.joint2.goal", goal_tol),
+//     rclcpp::Parameter("constraints.joint3.goal", goal_tol),
+//     rclcpp::Parameter("constraints.goal_time", goal_time)};
+
+//   // separate command from states -> goal won't never be reached
+//   bool separate_cmd_and_state_values = true;
+//   SetUpExecutor(params, separate_cmd_and_state_values);
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal; one point only -> command is directly set to reach this goal (no interpolation)
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point;
+//     point.time_from_start = rclcpp::Duration::from_seconds(0.0);
+//     point.positions.resize(joint_names_.size());
+
+//     point.positions[0] = 4.0;
+//     point.positions[1] = 5.0;
+//     point.positions[2] = 6.0;
+//     points.push_back(point);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::ABORTED, common_resultcode_);
+//   EXPECT_EQ(
+//     control_msgs::action::FollowJointTrajectory_Result::GOAL_TOLERANCE_VIOLATED,
+//     common_action_result_code_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the position (being the initial one)
+//   // i.e., active but trivial trajectory (one point only)
+//   std::vector<double> initial_positions{INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
+//   expectHoldingPoint(initial_positions);
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_no_time_from_start_state_tolerance_fail)
+// {
+//   // set joint tolerance parameters
+//   const double state_tol = 0.0001;
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("constraints.joint1.trajectory", state_tol),
+//     rclcpp::Parameter("constraints.joint2.trajectory", state_tol),
+//     rclcpp::Parameter("constraints.joint3.trajectory", state_tol)};
+
+//   // separate command from states -> goal won't never be reached
+//   bool separate_cmd_and_state_values = true;
+//   SetUpExecutor(params, separate_cmd_and_state_values);
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point;
+//     point.time_from_start = rclcpp::Duration::from_seconds(0.0);
+//     point.positions.resize(joint_names_.size());
+
+//     point.positions[0] = 4.0;
+//     point.positions[1] = 5.0;
+//     point.positions[2] = 6.0;
+//     points.push_back(point);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::ABORTED, common_resultcode_);
+//   EXPECT_EQ(
+//     control_msgs::action::FollowJointTrajectory_Result::PATH_TOLERANCE_VIOLATED,
+//     common_action_result_code_);
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the position (being the initial one)
+//   // i.e., active but trivial trajectory (one point only)
+//   std::vector<double> initial_positions{INITIAL_POS_JOINT1, INITIAL_POS_JOINT2, INITIAL_POS_JOINT3};
+//   expectHoldingPoint(initial_positions);
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_cancel_hold_position)
+// {
+//   SetUpExecutor();
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point;
+//     point.time_from_start = rclcpp::Duration::from_seconds(1.0);
+//     point.positions.resize(joint_names_.size());
+
+//     point.positions[0] = 4.0;
+//     point.positions[1] = 5.0;
+//     point.positions[2] = 6.0;
+//     points.push_back(point);
+
+//     control_msgs::action::FollowJointTrajectory_Goal goal_msg;
+//     goal_msg.goal_time_tolerance = rclcpp::Duration::from_seconds(2.0);
+//     goal_msg.trajectory.joint_names = joint_names_;
+//     goal_msg.trajectory.points = points;
+
+//     // send and wait for half a second before cancel
+//     gh_future = action_client_->async_send_goal(goal_msg, goal_options_);
+//     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+//     const auto goal_handle = gh_future.get();
+//     action_client_->async_cancel_goal(goal_handle);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::CANCELED, common_resultcode_);
+//   EXPECT_EQ(
+//     control_msgs::action::FollowJointTrajectory_Result::SUCCESSFUL, common_action_result_code_);
+
+//   std::vector<double> cancelled_position{joint_pos_[0], joint_pos_[1], joint_pos_[2]};
+
+//   // run an update
+//   updateController(rclcpp::Duration::from_seconds(0.01));
+
+//   // it should be holding the last position,
+//   // i.e., active but trivial trajectory (one point only)
+//   expectHoldingPoint(cancelled_position);
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_allow_nonzero_velocity_at_trajectory_end_true)
+// {
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("allow_nonzero_velocity_at_trajectory_end", true)};
+//   SetUpExecutor(params);
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal with nonzero last velocities
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point1;
+//     point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
+//     point1.positions.resize(joint_names_.size());
+//     point1.velocities.resize(joint_names_.size());
+
+//     point1.positions[0] = 4.0;
+//     point1.positions[1] = 5.0;
+//     point1.positions[2] = 6.0;
+//     point1.velocities[0] = 4.0;
+//     point1.velocities[1] = 5.0;
+//     point1.velocities[2] = 6.0;
+//     points.push_back(point1);
+
+//     JointTrajectoryPoint point2;
+//     point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
+//     point2.positions.resize(joint_names_.size());
+//     point2.velocities.resize(joint_names_.size());
+
+//     point2.positions[0] = 7.0;
+//     point2.positions[1] = 8.0;
+//     point2.positions[2] = 9.0;
+//     point2.velocities[0] = 4.0;
+//     point2.velocities[1] = 5.0;
+//     point2.velocities[2] = 6.0;
+//     points.push_back(point2);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   // will be accepted despite nonzero last point
+//   EXPECT_TRUE(gh_future.get());
+//   EXPECT_EQ(rclcpp_action::ResultCode::SUCCEEDED, common_resultcode_);
+// }
+
+// TEST_P(TestTrajectoryActionsTestParameterized, test_allow_nonzero_velocity_at_trajectory_end_false)
+// {
+//   std::vector<rclcpp::Parameter> params = {
+//     rclcpp::Parameter("allow_nonzero_velocity_at_trajectory_end", false)};
+//   SetUpExecutor(params);
+//   SetUpControllerHardware();
+
+//   std::shared_future<typename GoalHandle::SharedPtr> gh_future;
+//   // send goal with nonzero last velocities
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point1;
+//     point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
+//     point1.positions.resize(joint_names_.size());
+//     point1.velocities.resize(joint_names_.size());
+
+//     point1.positions[0] = 4.0;
+//     point1.positions[1] = 5.0;
+//     point1.positions[2] = 6.0;
+//     point1.velocities[0] = 4.0;
+//     point1.velocities[1] = 5.0;
+//     point1.velocities[2] = 6.0;
+//     points.push_back(point1);
+
+//     JointTrajectoryPoint point2;
+//     point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
+//     point2.positions.resize(joint_names_.size());
+//     point2.velocities.resize(joint_names_.size());
+
+//     point2.positions[0] = 7.0;
+//     point2.positions[1] = 8.0;
+//     point2.positions[2] = 9.0;
+//     point2.velocities[0] = 4.0;
+//     point2.velocities[1] = 5.0;
+//     point2.velocities[2] = 6.0;
+//     points.push_back(point2);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+//   controller_hw_thread_.join();
+
+//   EXPECT_FALSE(gh_future.get());
+
+//   // send goal with last velocity being zero
+//   {
+//     std::vector<JointTrajectoryPoint> points;
+//     JointTrajectoryPoint point1;
+//     point1.time_from_start = rclcpp::Duration::from_seconds(0.0);
+//     point1.positions.resize(joint_names_.size());
+//     point1.velocities.resize(joint_names_.size());
+
+//     point1.positions[0] = 4.0;
+//     point1.positions[1] = 5.0;
+//     point1.positions[2] = 6.0;
+//     point1.velocities[0] = 4.0;
+//     point1.velocities[1] = 5.0;
+//     point1.velocities[2] = 6.0;
+//     points.push_back(point1);
+
+//     JointTrajectoryPoint point2;
+//     point2.time_from_start = rclcpp::Duration::from_seconds(0.1);
+//     point2.positions.resize(joint_names_.size());
+//     point2.velocities.resize(joint_names_.size());
+
+//     point2.positions[0] = 7.0;
+//     point2.positions[1] = 8.0;
+//     point2.positions[2] = 9.0;
+//     point2.velocities[0] = 0.0;
+//     point2.velocities[1] = 0.0;
+//     point2.velocities[2] = 0.0;
+//     points.push_back(point2);
+
+//     gh_future = sendActionGoal(points, 1.0, goal_options_);
+//   }
+
+//   EXPECT_TRUE(gh_future.get());
+// }
 
 // position controllers
-INSTANTIATE_TEST_SUITE_P(
-  PositionTrajectoryControllersActions, TestTrajectoryActionsTestParameterized,
-  ::testing::Values(
-    std::make_tuple(std::vector<std::string>({"position"}), std::vector<std::string>({"position"})),
-    std::make_tuple(
-      std::vector<std::string>({"position"}), std::vector<std::string>({"position", "velocity"})),
-    std::make_tuple(
-      std::vector<std::string>({"position"}),
-      std::vector<std::string>({"position", "velocity", "acceleration"}))));
+// INSTANTIATE_TEST_SUITE_P(
+//   PositionTrajectoryControllersActions, TestTrajectoryActionsTestParameterized,
+//   ::testing::Values(
+//     std::make_tuple(std::vector<std::string>({"position"}), std::vector<std::string>({"position"})),
+//     std::make_tuple(
+//       std::vector<std::string>({"position"}), std::vector<std::string>({"position", "velocity"})),
+//     std::make_tuple(
+//       std::vector<std::string>({"position"}),
+//       std::vector<std::string>({"position", "velocity", "acceleration"}))));
 
-// position_velocity controllers
-INSTANTIATE_TEST_SUITE_P(
-  PositionVelocityTrajectoryControllersActions, TestTrajectoryActionsTestParameterized,
-  ::testing::Values(
-    std::make_tuple(
-      std::vector<std::string>({"position", "velocity"}), std::vector<std::string>({"position"})),
-    std::make_tuple(
-      std::vector<std::string>({"position", "velocity"}),
-      std::vector<std::string>({"position", "velocity"})),
-    std::make_tuple(
-      std::vector<std::string>({"position", "velocity"}),
-      std::vector<std::string>({"position", "velocity", "acceleration"}))));
+// // position_velocity controllers
+// INSTANTIATE_TEST_SUITE_P(
+//   PositionVelocityTrajectoryControllersActions, TestTrajectoryActionsTestParameterized,
+//   ::testing::Values(
+//     std::make_tuple(
+//       std::vector<std::string>({"position", "velocity"}), std::vector<std::string>({"position"})),
+//     std::make_tuple(
+//       std::vector<std::string>({"position", "velocity"}),
+//       std::vector<std::string>({"position", "velocity"})),
+//     std::make_tuple(
+//       std::vector<std::string>({"position", "velocity"}),
+//       std::vector<std::string>({"position", "velocity", "acceleration"}))));
 
-// only velocity controller
-INSTANTIATE_TEST_SUITE_P(
-  OnlyVelocityTrajectoryControllersAction, TestTrajectoryActionsTestParameterized,
-  ::testing::Values(
-    std::make_tuple(
-      std::vector<std::string>({"velocity"}), std::vector<std::string>({"position", "velocity"})),
-    std::make_tuple(
-      std::vector<std::string>({"velocity"}),
-      std::vector<std::string>({"position", "velocity", "acceleration"}))));
+// // only velocity controller
+// INSTANTIATE_TEST_SUITE_P(
+//   OnlyVelocityTrajectoryControllersAction, TestTrajectoryActionsTestParameterized,
+//   ::testing::Values(
+//     std::make_tuple(
+//       std::vector<std::string>({"velocity"}), std::vector<std::string>({"position", "velocity"})),
+//     std::make_tuple(
+//       std::vector<std::string>({"velocity"}),
+//       std::vector<std::string>({"position", "velocity", "acceleration"}))));
 
-// only effort controller
-INSTANTIATE_TEST_SUITE_P(
-  OnlyEffortTrajectoryControllers, TestTrajectoryActionsTestParameterized,
-  ::testing::Values(
-    std::make_tuple(
-      std::vector<std::string>({"effort"}), std::vector<std::string>({"position", "velocity"})),
-    std::make_tuple(
-      std::vector<std::string>({"effort"}),
-      std::vector<std::string>({"position", "velocity", "acceleration"}))));
+// // only effort controller
+// INSTANTIATE_TEST_SUITE_P(
+//   OnlyEffortTrajectoryControllers, TestTrajectoryActionsTestParameterized,
+//   ::testing::Values(
+//     std::make_tuple(
+//       std::vector<std::string>({"effort"}), std::vector<std::string>({"position", "velocity"})),
+//     std::make_tuple(
+//       std::vector<std::string>({"effort"}),
+//       std::vector<std::string>({"position", "velocity", "acceleration"}))));
