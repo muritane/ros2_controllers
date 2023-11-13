@@ -189,23 +189,29 @@ controller_interface::return_type JointTrajectoryController::update(
   // currently carrying out a trajectory
   if (has_active_trajectory())
   {
+    RCLCPP_INFO(get_node()->get_logger(), "has active trajectory!");
     bool first_sample = false;
     // if sampling the first time, set the point before you sample
     if (!traj_external_point_ptr_->is_sampled_already())
     {
+      RCLCPP_INFO(get_node()->get_logger(), "traj point not sampled!");
       first_sample = true;
       if (params_.open_loop_control)
       {
+        RCLCPP_INFO(get_node()->get_logger(), "open loop control!");
         // traj_external_point_ptr_->set_point_before_trajectory_msg(time, last_commanded_state_);
         if (last_commanded_time_.seconds() == 0.0)
         {
+          RCLCPP_INFO(get_node()->get_logger(), "last_commanded_time_.seconds() == 0.0!");
           last_commanded_time_ = time;
         }
+        RCLCPP_INFO_STREAM(get_node()->get_logger(), "last_commanded_time_.seconds(): " << last_commanded_time_.seconds());
         traj_external_point_ptr_->set_point_before_trajectory_msg(
           last_commanded_time_, last_commanded_state_);
       }
       else
       {
+        RCLCPP_INFO(get_node()->get_logger(), "close loop control!");
         traj_external_point_ptr_->set_point_before_trajectory_msg(time, state_current_);
       }
     }

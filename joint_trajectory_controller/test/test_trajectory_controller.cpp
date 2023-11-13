@@ -1810,7 +1810,7 @@ TEST_P(TrajectoryControllerTestParameterized, foo)
     std::string state_when_offset = "[";
     std::string stamps = "[";
     // size_t iterations = goal[0] / controller_update_wait_time;
-    size_t iterations = 5 * 2;
+    size_t iterations = 5 * 1;
     for (size_t i = 0; i < iterations; ++i) {
       joint_pos += std::to_string(joint_pos_[0]) + ", ";
       auto current_state_when_offset = traj_controller_->get_current_state_when_offset();
